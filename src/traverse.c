@@ -49,9 +49,11 @@ BackupResult traverse_directory(const char *root_path, FileMetadata **files, int
     WIN32_FIND_DATA find_data;
     char search_path[256];
     sprintf(search_path, "%s\\*", root_path);
+    printf("DEBUG: Searching path: %s\n", search_path);  // 添加调试信息
     HANDLE find_handle = FindFirstFile(search_path, &find_data);
     if (find_handle == INVALID_HANDLE_VALUE)
     {
+        printf("DEBUG: FindFirstFile failed, error: %d\n", GetLastError());  // 添加调试信息
         free(*files);
         return BACKUP_ERROR_PATH;
     }
@@ -91,6 +93,7 @@ BackupResult traverse_directory(const char *root_path, FileMetadata **files, int
         // 构建完整的绝对路径
         char full_item_path[256];
         sprintf(full_item_path, "%s\\%s", current->full_path, current->find_data.cFileName);
+        printf("DEBUG: Processing item: %s\n", full_item_path);  // 添加调试信息
 
         // 构建相对路径
         char rel_item_path[256];
@@ -107,6 +110,7 @@ BackupResult traverse_directory(const char *root_path, FileMetadata **files, int
         DWORD attr = GetFileAttributes(full_item_path);
         if (attr == INVALID_FILE_ATTRIBUTES)
         {
+            printf("DEBUG: GetFileAttributes failed for: %s\n", full_item_path);  // 添加调试信息
             continue;
         }
 
@@ -136,14 +140,14 @@ BackupResult traverse_directory(const char *root_path, FileMetadata **files, int
         // 同时确保path字段也设置为相对路径
         strncpy(metadata.path, rel_item_path, sizeof(metadata.path) - 1);
         metadata.path[sizeof(metadata.path) - 1] = '\0';
-        
+
         // 获取文件大小
         if (metadata.type == FILE_TYPE_REGULAR)
         {
             // 使用CreateFile和GetFileSizeEx获取文件大小，避免打开文件时的锁问题
-            HANDLE file_handle = CreateFile(full_item_path, GENERIC_READ,
-                                            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                                            NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+            HANDLE file_handle = CreateFile(full_item_path, GENERIC_READ, 
+                                           FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                           NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
             if (file_handle != INVALID_HANDLE_VALUE)
             {
                 LARGE_INTEGER file_size;
@@ -155,28 +159,40 @@ BackupResult traverse_directory(const char *root_path, FileMetadata **files, int
             }
             else
             {
-                metadata.size = 0;
+                printf("DEBUG: CreateFile failed for: %s, error: %d\n", full_item_path, GetLastError());  // 添加调试信息
             }
+        }
+        else
+        {
+            metadata.size = 0;  // 目录的大小设为0
         }
 
         // 获取文件时间
-        HANDLE file_handle = CreateFile(full_item_path, GENERIC_READ,
-                                        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                                        NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        if (file_handle != INVALID_HANDLE_VALUE)
+        HANDLE time_handle = CreateFile(full_item_path, GENERIC_READ, 
+                              FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                              NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (time_handle != INVALID_HANDLE_VALUE)
         {
-            FILETIME create_time, modify_time, access_time;
-            if (GetFileTime(file_handle, &create_time, &access_time, &modify_time))
+            FILETIME create_time, access_time, write_time;
+            if (GetFileTime(time_handle, &create_time, &access_time, &write_time))
             {
+                // 将FILETIME转换为time_t
                 SYSTEMTIME sys_time;
+                struct tm tm_time;
+                
+                // 创建时间
                 FileTimeToSystemTime(&create_time, &sys_time);
-                struct tm tm_time = {
-                    sys_time.wSecond, sys_time.wMinute, sys_time.wHour,
-                    sys_time.wDay, sys_time.wMonth - 1, sys_time.wYear - 1900,
-                    sys_time.wDayOfWeek, 0, 0};
+                tm_time.tm_sec = sys_time.wSecond;
+                tm_time.tm_min = sys_time.wMinute;
+                tm_time.tm_hour = sys_time.wHour;
+                tm_time.tm_mday = sys_time.wDay;
+                tm_time.tm_mon = sys_time.wMonth - 1;
+                tm_time.tm_year = sys_time.wYear - 1900;
+                tm_time.tm_wday = sys_time.wDayOfWeek;
                 metadata.create_time = mktime(&tm_time);
-
-                FileTimeToSystemTime(&modify_time, &sys_time);
+                
+                // 修改时间
+                FileTimeToSystemTime(&write_time, &sys_time);
                 tm_time.tm_sec = sys_time.wSecond;
                 tm_time.tm_min = sys_time.wMinute;
                 tm_time.tm_hour = sys_time.wHour;
@@ -185,7 +201,8 @@ BackupResult traverse_directory(const char *root_path, FileMetadata **files, int
                 tm_time.tm_year = sys_time.wYear - 1900;
                 tm_time.tm_wday = sys_time.wDayOfWeek;
                 metadata.modify_time = mktime(&tm_time);
-
+                
+                // 访问时间
                 FileTimeToSystemTime(&access_time, &sys_time);
                 tm_time.tm_sec = sys_time.wSecond;
                 tm_time.tm_min = sys_time.wMinute;
@@ -196,7 +213,7 @@ BackupResult traverse_directory(const char *root_path, FileMetadata **files, int
                 tm_time.tm_wday = sys_time.wDayOfWeek;
                 metadata.access_time = mktime(&tm_time);
             }
-            CloseHandle(file_handle);
+            CloseHandle(time_handle);
         }
 
         // 设置默认权限
@@ -212,7 +229,7 @@ BackupResult traverse_directory(const char *root_path, FileMetadata **files, int
         }
 
         // 处理目录：如果是目录，加入遍历栈，不添加到结果列表
-        if (attr & FILE_ATTRIBUTE_DIRECTORY &&
+        if (attr & FILE_ATTRIBUTE_DIRECTORY && 
             !(attr & FILE_ATTRIBUTE_REPARSE_POINT))
         {
             // 这是一个目录，将其加入遍历栈
@@ -220,7 +237,7 @@ BackupResult traverse_directory(const char *root_path, FileMetadata **files, int
             char subdir_rel_path[256];
             sprintf(subdir_full_path, "%s\\%s", current->full_path, current->find_data.cFileName);
             sprintf(subdir_rel_path, "%s\\%s", current->rel_path, current->find_data.cFileName);
-
+            
             // 打开子目录
             char subdir_search[256];
             sprintf(subdir_search, "%s\\*", subdir_full_path);
@@ -237,12 +254,13 @@ BackupResult traverse_directory(const char *root_path, FileMetadata **files, int
             // 跳过当前目录，继续处理下一个项
             continue;
         }
-
+        
         // 只处理非目录文件
-
+        
         // 数据过滤
         if (options != NULL && !filter_file(&metadata, options))
         {
+            printf("DEBUG: File filtered out: %s\n", metadata.name);  // 添加调试信息
             continue;
         }
 
@@ -260,6 +278,7 @@ BackupResult traverse_directory(const char *root_path, FileMetadata **files, int
         }
         (*files)[*file_count] = metadata;
         (*file_count)++;
+        printf("DEBUG: Added file to list: %s, size: %lu\n", metadata.name, metadata.size);  // 添加调试信息
     }
 
     return BACKUP_SUCCESS;

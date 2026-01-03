@@ -1,15 +1,18 @@
 #include "../include/backup.h"
-#include "../include/main.h"
 #include "../include/traverse.h"
+#include "../include/pack.h"
+#include "../include/compress.h"
+#include "../include/encrypt.h"
 #include <windows.h>
-#include <tchar.h>
+#include <string.h>
+#include <stdio.h>
 
-// 辅助函数：递归创建目录
-int create_directory_recursive(const char *path) {
-    char temp_path[512];
+// 辅助函数：创建目录（包括父目录）
+int create_directories(const char *path) {
+    char temp_path[256];
     strcpy(temp_path, path);
     
-    // 替换所有的'/'为'\'
+    // 将路径分隔符统一为Windows风格
     for (int i = 0; temp_path[i] != '\0'; i++) {
         if (temp_path[i] == '/') {
             temp_path[i] = '\\';
@@ -123,9 +126,16 @@ BackupResult backup_data(const BackupOptions *options) {
     // 保存当前工作目录
     char current_dir[256];
     GetCurrentDirectory(256, current_dir);
+    printf("DEBUG: Current directory: %s\n", current_dir);
+    
+    // 获取源目录的完整路径
+    char source_abs[512];
+    GetFullPathName(options->source_path, sizeof(source_abs), source_abs, NULL);
+    printf("DEBUG: Source directory absolute path: %s\n", source_abs);
     
     // 切换到源目录，以便pack_files能正确找到相对路径的文件
-    if (!SetCurrentDirectory(options->source_path)) {
+    if (!SetCurrentDirectory(source_abs)) {
+        printf("DEBUG: Failed to set current directory to source path: %s, error: %d\n", source_abs, GetLastError());
         free(files);
         return BACKUP_ERROR_PATH;
     }
@@ -141,61 +151,20 @@ BackupResult backup_data(const BackupOptions *options) {
         return result;
     }
 
-    // 保存当前打包文件路径，用于后续处理
-    strcpy(current_pack_path, pack_file_path);
-    
-    // 压缩打包文件（如果需要）
-    if (options->compress_algorithm != COMPRESS_ALGORITHM_NONE) {
-        sprintf(compress_file_path, "%s\\backup_compressed.dat", options->target_path);
-        
-        result = compress_file(current_pack_path, compress_file_path, options->compress_algorithm);
-        if (result != BACKUP_SUCCESS) {
-            free(files);
-            return result;
-        }
-        
-        // 更新当前处理的文件路径为压缩后的文件
-        strcpy(current_pack_path, compress_file_path);
-    }
-
-    // 加密文件（如果需要）
+    // 如果启用了加密，对打包文件进行加密
     if (options->encrypt_enable) {
-        sprintf(encrypt_file_path, "%s\\backup_encrypted.dat", options->target_path);
-        
-        result = encrypt_file(current_pack_path, encrypt_file_path, options->encrypt_key);
-        if (result != BACKUP_SUCCESS) {
+        sprintf(encrypt_file_path, "%s\\backup.dat.enc", target_abs);
+        result = encrypt_file(pack_file_path, encrypt_file_path, options->encrypt_key);
+        if (result == BACKUP_SUCCESS) {
+            // 加密成功，删除原始文件
+            DeleteFile(pack_file_path);
+        } else {
+            printf("DEBUG: Encryption failed\n");
             free(files);
             return result;
-        }
-        
-        // 更新当前处理的文件路径为加密后的文件
-        strcpy(current_pack_path, encrypt_file_path);
-        
-        // 将加密后的文件重命名为backup.dat，以便restore能正确找到
-        DeleteFile(pack_file_path);
-        if (MoveFile(encrypt_file_path, pack_file_path) == 0) {
-            printf("DEBUG: Failed to rename encrypted file to backup.dat, error: %d\n", GetLastError());
-            free(files);
-            return BACKUP_ERROR_FILE;
-        }
-    } else if (strcmp(current_pack_path, pack_file_path) != 0) {
-        // 如果没有加密，但有压缩，将压缩后的文件重命名为backup.dat
-        DeleteFile(pack_file_path);
-        if (MoveFile(current_pack_path, pack_file_path) == 0) {
-            printf("DEBUG: Failed to rename compressed file to backup.dat, error: %d\n", GetLastError());
-            free(files);
-            return BACKUP_ERROR_FILE;
         }
     }
 
     free(files);
-    return BACKUP_SUCCESS;
-}
-
-// 复制文件
-BackupResult copy_file(const char *source, const char *target) {
-    if (CopyFile(source, target, FALSE) == 0) {
-        return BACKUP_ERROR_FILE;
-    }
     return BACKUP_SUCCESS;
 }

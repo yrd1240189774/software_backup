@@ -30,4 +30,20 @@ BackupResult decrypt_file(const char *input_path, const char *output_path, const
 BackupResult get_file_metadata(const char *path, FileMetadata *metadata);
 BackupResult set_file_metadata(const char *path, const FileMetadata *metadata);
 
+// 定时备份模块
+BackupResult schedule_backup(const ScheduledBackupOptions *options);
+void run_scheduled_backup(const ScheduledBackupOptions *options);
+int check_schedule_due(const ScheduleConfig *config);
+void update_next_run_time(ScheduleConfig *config);
+
+// 数据清理模块
+BackupResult cleanup_old_backups(const CleanupConfig *config);
+int is_backup_outdated(const char *backup_path, int keep_days);
+time_t get_file_modification_time(const char *path);
+
+// 配置管理模块
+BackupResult save_schedule_config(const ScheduledBackupOptions *options, const char *config_path);
+BackupResult load_schedule_config(ScheduledBackupOptions *options, const char *config_path);
+
+
 #endif // MAIN_H

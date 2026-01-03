@@ -142,4 +142,29 @@ typedef enum {
     BACKUP_ERROR_NO_FILES = -8  // 没有文件需要备份
 } BackupResult;
 
+typedef struct {
+    int enable;                // 是否启用定时备份
+    char cron_expression[64];  // 定时表达式（类似Linux cron格式）
+    int interval_hours;        // 备份间隔（小时）
+    int interval_minutes;      // 备份间隔（分钟）
+    time_t last_run_time;      // 上次运行时间
+    time_t next_run_time;      // 下次运行时间
+} ScheduleConfig;
+
+// 数据清理配置结构体
+typedef struct {
+    int enable;                // 是否启用数据清理
+    int keep_days;             // 保留天数，超过此天数的备份将被删除
+    int max_backup_count;      // 最大备份文件数量
+    char backup_directory[256]; // 备份目录路径
+    time_t cleanup_time;        // 清理时间
+} CleanupConfig;
+
+// 定时备份选项结构体
+typedef struct {
+    BackupOptions backup_options;  // 基础备份选项
+    ScheduleConfig schedule_config; // 定时配置
+    CleanupConfig cleanup_config;   // 清理配置
+} ScheduledBackupOptions;
+
 #endif // TYPES_H

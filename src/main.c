@@ -1,6 +1,7 @@
 #include "../include/main.h"
 #include <stdio.h>
 #include <windows.h>
+#include <time.h>
 
 // 打印帮助信息
 void print_help() {
@@ -12,6 +13,23 @@ void print_help() {
     printf("    -a <算法>：打包算法（tar/zip）\n");
     printf("    -c <算法>：压缩算法（none/haff/lz77）\n");
     printf("    -e <算法> <密钥>：加密算法（none/aes/des）和密钥\n");
+    printf("\n");
+    printf("定时备份功能：\n");
+    printf("  schedule -s <源路径> -t <目标路径> -i <间隔(分钟)> [选项]\n");
+    printf("  选项：\n");
+    printf("    -i <间隔>：备份间隔（分钟）\n");
+    printf("    -a <算法>：打包算法（tar/zip）\n");
+    printf("    -c <算法>：压缩算法（none/haff/lz77）\n");
+    printf("    -e <算法> <密钥>：加密算法（none/aes/des）和密钥\n");
+    printf("    --keep-days <天数>：保留备份的天数\n");
+    printf("    --max-count <数量>：最大备份文件数量\n");
+    printf("\n");
+    printf("数据清理功能：\n");
+    printf("  cleanup -d <备份目录> --keep-days <天数> [选项]\n");
+    printf("  选项：\n");
+    printf("    -d <目录>：备份文件所在目录\n");
+    printf("    --keep-days <天数>：保留备份的天数\n");
+    printf("    --max-count <数量>：最大备份文件数量\n");
     printf("\n");
     printf("还原功能：\n");
     printf("  restore -f <备份文件> -t <目标路径> [选项]\n");
@@ -39,7 +57,9 @@ void print_help() {
     printf("    -k <密钥>：解密密钥\n");
     printf("\n");
     printf("示例：\n");
-    printf("  backup -s C:\\data -t D:\\backup -a mypack -c haff -e aes 123456\n");
+    printf("  backup -s C:\\data -t D:\\backup -a tar -c haff -e aes 123456\n");
+    printf("  schedule -s C:\\data -t D:\\backup -i 60 -c haff -e aes 123456 --keep-days 7 --max-count 5\n");
+    printf("  cleanup -d D:\\backup --keep-days 7 --max-count 5\n");
     printf("  restore -f D:\\backup\\backup.dat -t C:\\restore -e aes 123456\n");
     printf("  compress -i input.txt -o output.cmp -a haff\n");
     printf("  decompress -i input.cmp -o output.txt\n");
@@ -52,7 +72,8 @@ int parse_args(int argc, char *argv[], int *operation, BackupOptions *backup_opt
                char *compress_input, char *compress_output, CompressAlgorithm *compress_algorithm,
                char *decompress_input, char *decompress_output,
                char *encrypt_input, char *encrypt_output, EncryptAlgorithm *encrypt_algorithm, char *encrypt_key,
-               char *decrypt_input, char *decrypt_output, EncryptAlgorithm *decrypt_algorithm, char *decrypt_key) {
+               char *decrypt_input, char *decrypt_output, EncryptAlgorithm *decrypt_algorithm, char *decrypt_key,
+               ScheduledBackupOptions *scheduled_backup_opt, char *cleanup_dir, int *keep_days, int *max_count) {
     if (argc < 2) {
         return -1;
     }
@@ -60,6 +81,10 @@ int parse_args(int argc, char *argv[], int *operation, BackupOptions *backup_opt
     // 确定操作类型
     if (strcmp(argv[1], "backup") == 0) {
         *operation = 0; // 备份
+    } else if (strcmp(argv[1], "schedule") == 0) {
+        *operation = 6; // 定时备份
+    } else if (strcmp(argv[1], "cleanup") == 0) {
+        *operation = 7; // 数据清理
     } else if (strcmp(argv[1], "restore") == 0) {
         *operation = 1; // 还原
     } else if (strcmp(argv[1], "compress") == 0) {
@@ -118,6 +143,93 @@ int parse_args(int argc, char *argv[], int *operation, BackupOptions *backup_opt
 
         // 检查必需参数
         if (backup_opt->source_path[0] == 0 || backup_opt->target_path[0] == 0) {
+            return -1;
+        }
+    }
+    // 解析定时备份参数
+    else if (*operation == 6) {
+        int i = 2;
+        while (i < argc) {
+            if (strcmp(argv[i], "-s") == 0 && i + 1 < argc) {
+                strcpy(scheduled_backup_opt->backup_options.source_path, argv[i + 1]);
+                i += 2;
+            } else if (strcmp(argv[i], "-t") == 0 && i + 1 < argc) {
+                strcpy(scheduled_backup_opt->backup_options.target_path, argv[i + 1]);
+                i += 2;
+            } else if (strcmp(argv[i], "-i") == 0 && i + 1 < argc) {
+                scheduled_backup_opt->schedule_config.interval_minutes = atoi(argv[i + 1]);
+                scheduled_backup_opt->schedule_config.enable = 1;
+                i += 2;
+            } else if (strcmp(argv[i], "-a") == 0 && i + 1 < argc) {
+                if (strcmp(argv[i + 1], "tar") == 0) {
+                    scheduled_backup_opt->backup_options.pack_algorithm = PACK_ALGORITHM_TAR;
+                } else if (strcmp(argv[i + 1], "zip") == 0) {
+                    scheduled_backup_opt->backup_options.pack_algorithm = PACK_ALGORITHM_ZIP;
+                }
+                i += 2;
+            } else if (strcmp(argv[i], "-c") == 0 && i + 1 < argc) {
+                if (strcmp(argv[i + 1], "none") == 0) {
+                    scheduled_backup_opt->backup_options.compress_algorithm = COMPRESS_ALGORITHM_NONE;
+                } else if (strcmp(argv[i + 1], "haff") == 0) {
+                    scheduled_backup_opt->backup_options.compress_algorithm = COMPRESS_ALGORITHM_HAFF;
+                } else if (strcmp(argv[i + 1], "lz77") == 0) {
+                    scheduled_backup_opt->backup_options.compress_algorithm = COMPRESS_ALGORITHM_LZ77;
+                }
+                i += 2;
+            } else if (strcmp(argv[i], "-e") == 0 && i + 2 < argc) {
+                scheduled_backup_opt->backup_options.encrypt_enable = 1;
+                if (strcmp(argv[i + 1], "none") == 0) {
+                    scheduled_backup_opt->backup_options.encrypt_algorithm = ENCRYPT_ALGORITHM_NONE;
+                } else if (strcmp(argv[i + 1], "aes") == 0) {
+                    scheduled_backup_opt->backup_options.encrypt_algorithm = ENCRYPT_ALGORITHM_AES;
+                } else if (strcmp(argv[i + 1], "des") == 0) {
+                    scheduled_backup_opt->backup_options.encrypt_algorithm = ENCRYPT_ALGORITHM_DES;
+                }
+                strcpy(scheduled_backup_opt->backup_options.encrypt_key, argv[i + 2]);
+                i += 3;
+            } else if (strcmp(argv[i], "--keep-days") == 0 && i + 1 < argc) {
+                scheduled_backup_opt->cleanup_config.keep_days = atoi(argv[i + 1]);
+                scheduled_backup_opt->cleanup_config.enable = 1;
+                i += 2;
+            } else if (strcmp(argv[i], "--max-count") == 0 && i + 1 < argc) {
+                scheduled_backup_opt->cleanup_config.max_backup_count = atoi(argv[i + 1]);
+                scheduled_backup_opt->cleanup_config.enable = 1;
+                i += 2;
+            } else {
+                return -1;
+            }
+        }
+
+        // 检查必需参数
+        if (scheduled_backup_opt->backup_options.source_path[0] == 0 || 
+            scheduled_backup_opt->backup_options.target_path[0] == 0 || 
+            scheduled_backup_opt->schedule_config.interval_minutes <= 0) {
+            return -1;
+        }
+        
+        // 设置清理配置的备份目录
+        strcpy(scheduled_backup_opt->cleanup_config.backup_directory, scheduled_backup_opt->backup_options.target_path);
+    }
+    // 解析数据清理参数
+    else if (*operation == 7) {
+        int i = 2;
+        while (i < argc) {
+            if (strcmp(argv[i], "-d") == 0 && i + 1 < argc) {
+                strcpy(cleanup_dir, argv[i + 1]);
+                i += 2;
+            } else if (strcmp(argv[i], "--keep-days") == 0 && i + 1 < argc) {
+                *keep_days = atoi(argv[i + 1]);
+                i += 2;
+            } else if (strcmp(argv[i], "--max-count") == 0 && i + 1 < argc) {
+                *max_count = atoi(argv[i + 1]);
+                i += 2;
+            } else {
+                return -1;
+            }
+        }
+
+        // 检查必需参数
+        if (cleanup_dir[0] == 0 || (*keep_days <= 0 && *max_count <= 0)) {
             return -1;
         }
     }
@@ -273,9 +385,10 @@ int main(int argc, char *argv[]) {
     // 设置控制台代码页为UTF-8，解决中文乱码问题
     SetConsoleOutputCP(CP_UTF8);
     
-    int operation = -1; // 0: 备份, 1: 还原, 2: 压缩, 3: 解压, 4: 加密, 5: 解密
+    int operation = -1; // 0: 备份, 1: 还原, 2: 压缩, 3: 解压, 4: 加密, 5: 解密, 6: 定时备份, 7: 数据清理
     BackupOptions backup_opt = {0};
     RestoreOptions restore_opt = {0};
+    ScheduledBackupOptions scheduled_backup_opt = {0};
     BackupResult result;
     
     // 压缩相关参数
@@ -298,6 +411,12 @@ int main(int argc, char *argv[]) {
     char decrypt_output[256] = {0};
     EncryptAlgorithm decrypt_algorithm = ENCRYPT_ALGORITHM_NONE;
     char decrypt_key[64] = {0};
+    
+    // 定时备份和数据清理相关参数
+    ScheduledBackupOptions scheduled_backup_opt_local = {0};
+    char cleanup_dir[256] = {0};
+    int keep_days = 0;
+    int max_count = 0;
 
     // 设置默认值
     backup_opt.file_types = FILE_TYPE_REGULAR | FILE_TYPE_DIRECTORY;
@@ -312,13 +431,44 @@ int main(int argc, char *argv[]) {
     
     restore_opt.encrypt_enable = 0;
     restore_opt.encrypt_algorithm = ENCRYPT_ALGORITHM_NONE;
+    
+    // 初始化定时备份配置
+    scheduled_backup_opt_local.schedule_config.enable = 0;
+    scheduled_backup_opt_local.schedule_config.interval_minutes = 0;
+    scheduled_backup_opt_local.cleanup_config.enable = 0;
+    scheduled_backup_opt_local.cleanup_config.keep_days = 7;  // 默认保留7天
+    scheduled_backup_opt_local.cleanup_config.max_backup_count = 5;  // 默认最多保留5个备份
+    
+    // 设置定时备份的备份选项默认值
+    scheduled_backup_opt_local.backup_options.file_types = FILE_TYPE_REGULAR | FILE_TYPE_DIRECTORY;
+    scheduled_backup_opt_local.backup_options.pack_algorithm = PACK_ALGORITHM_TAR;
+    scheduled_backup_opt_local.backup_options.compress_algorithm = COMPRESS_ALGORITHM_NONE;
+    scheduled_backup_opt_local.backup_options.encrypt_enable = 0;
+    scheduled_backup_opt_local.backup_options.encrypt_algorithm = ENCRYPT_ALGORITHM_NONE;
+    
+    // 初始化大小范围：允许所有大小的文件
+    scheduled_backup_opt_local.backup_options.size_range.min_size = 0;
+    scheduled_backup_opt_local.backup_options.size_range.max_size = 0xFFFFFFFF;
+    
+    scheduled_backup_opt_local.backup_options.create_time_range.enable = 0;
+    scheduled_backup_opt_local.backup_options.modify_time_range.enable = 0;
+    scheduled_backup_opt_local.backup_options.access_time_range.enable = 0;
+    
+    // 初始化排除选项
+    scheduled_backup_opt_local.backup_options.exclude_usergroup.enable_user = 0;
+    scheduled_backup_opt_local.backup_options.exclude_usergroup.enable_group = 0;
+    scheduled_backup_opt_local.backup_options.exclude_usergroup.user_count = 0;
+    scheduled_backup_opt_local.backup_options.exclude_usergroup.group_count = 0;
+    scheduled_backup_opt_local.backup_options.exclude_filename.pattern[0] = '\0';
+    scheduled_backup_opt_local.backup_options.exclude_directory.count = 0;
 
     // 解析命令行参数
     if (parse_args(argc, argv, &operation, &backup_opt, &restore_opt,
                    compress_input, compress_output, &compress_algorithm,
                    decompress_input, decompress_output,
                    encrypt_input, encrypt_output, &encrypt_algorithm, encrypt_key,
-                   decrypt_input, decrypt_output, &decrypt_algorithm, decrypt_key) != 0) {
+                   decrypt_input, decrypt_output, &decrypt_algorithm, decrypt_key,
+                   &scheduled_backup_opt_local, cleanup_dir, &keep_days, &max_count) != 0) {
         print_help();
         return 1;
     }
@@ -400,6 +550,47 @@ int main(int argc, char *argv[]) {
                 printf("解密成功！\n");
             } else {
                 printf("解密失败，错误码: %d\n", result);
+            }
+            break;
+            
+        case 6: // 定时备份
+            printf("开始定时备份...\n");
+            printf("源路径: %s\n", scheduled_backup_opt_local.backup_options.source_path);
+            printf("目标路径: %s\n", scheduled_backup_opt_local.backup_options.target_path);
+            printf("备份间隔: %d 分钟\n", scheduled_backup_opt_local.schedule_config.interval_minutes);
+            
+            if (scheduled_backup_opt_local.cleanup_config.enable) {
+                printf("数据清理配置:\n");
+                printf("  保留天数: %d\n", scheduled_backup_opt_local.cleanup_config.keep_days);
+                printf("  最大备份数: %d\n", scheduled_backup_opt_local.cleanup_config.max_backup_count);
+            }
+            
+            result = schedule_backup(&scheduled_backup_opt_local);
+            if (result == BACKUP_SUCCESS) {
+                printf("定时备份配置成功！\n");
+            } else {
+                printf("定时备份配置失败，错误码: %d\n", result);
+            }
+            break;
+            
+        case 7: // 数据清理
+            printf("开始清理旧备份...\n");
+            printf("备份目录: %s\n", cleanup_dir);
+            if (keep_days > 0) printf("保留天数: %d\n", keep_days);
+            if (max_count > 0) printf("最大备份数: %d\n", max_count);
+            
+            // 创建临时的清理配置
+            CleanupConfig cleanup_config = {0};
+            cleanup_config.enable = 1;
+            strcpy(cleanup_config.backup_directory, cleanup_dir);
+            cleanup_config.keep_days = keep_days;
+            cleanup_config.max_backup_count = max_count;
+            
+            result = cleanup_old_backups(&cleanup_config);
+            if (result == BACKUP_SUCCESS) {
+                printf("数据清理完成！\n");
+            } else {
+                printf("数据清理失败，错误码: %d\n", result);
             }
             break;
     }

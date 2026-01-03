@@ -16,17 +16,20 @@ LDFLAGS = -L"$(OPENSSL_LIB)" -lssl -lcrypto -lws2_32 -lcrypt32
 TARGET = backup_software
 
 # 源文件
-SRCS = src/main.c src/backup.c src/restore.c src/filter.c src/pack.c src/compress.c src/encrypt.c src/metadata.c src/huffman.c src/traverse.c
+SRCDIR = src
+SOURCES = $(SRCDIR)/main.c $(SRCDIR)/backup.c $(SRCDIR)/restore.c $(SRCDIR)/compress.c \
+          $(SRCDIR)/encrypt.c $(SRCDIR)/pack.c $(SRCDIR)/traverse.c $(SRCDIR)/filter.c \
+          $(SRCDIR)/huffman.c $(SRCDIR)/metadata.c $(SRCDIR)/schedule.c $(SRCDIR)/cleanup.c
 
 # 目标文件 - 输出到build目录
-OBJS = $(patsubst src/%.c,build/%.o,$(SRCS))
+OBJS = $(patsubst src/%.c,build/%.o,$(SOURCES))
 
 # 默认目标
 all: $(TARGET)
 
 # 编译目标
 $(TARGET): build $(OBJS)
-	$(CC) $(CFLAGS) -o $(TARGET) $(OBJS) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o $(TARGET).exe $(OBJS) $(LDFLAGS)
 
 # 创建build目录
 build:
@@ -43,163 +46,79 @@ clean:
 	@rmdir /s /q build 2>nul || echo build directory removed
 	@del /f /q $(TARGET).exe 2>nul || echo executable removed
 
-# 基础功能测试
-test-basic: $(TARGET)
-	@echo Running basic functionality test...
-	@$(TARGET) --help > nul 2>&1 || exit 0 
+# 测试目标 - 帮助信息测试
+test-help:
+	@echo === ²âÊÔ°ïÖúÐÅÏ¢ ===
+	-./$(TARGET).exe
 
-# 压缩功能测试
-compress-test: $(TARGET)
-	@echo Creating test directory...
-	@mkdir test 2>nul || echo test directory exists
-	@mkdir build 2>nul || echo build directory exists
-	@echo "This is a test file for compression. It contains some repetitive content to test the compression algorithm. This is a test file for compression. It contains some repetitive content to test the compression algorithm." > test\compress_test.txt
-	@echo Running compression test with LZ77 algorithm...
-	@$(TARGET) compress -i test\compress_test.txt -o build\compressed_lz77.cmp -a lz77
-	@echo Running decompression test with LZ77 algorithm...
-	@$(TARGET) decompress -i build\compressed_lz77.cmp -o build\decompressed_lz77.txt
-	@echo Verifying LZ77 compression/decompression...
-	@fc test\compress_test.txt build\decompressed_lz77.txt && echo  LZ77 COMPRESS/DECOMPRESS: FILE MATCH || echo  LZ77 COMPRESS/DECOMPRESS: FILE DIFFER
-	@echo Running compression test with Huffman algorithm...
-	@$(TARGET) compress -i test\compress_test.txt -o build\compressed_haff.cmp -a haff
-	@echo Running decompression test with Huffman algorithm...
-	@$(TARGET) decompress -i build\compressed_haff.cmp -o build\decompressed_haff.txt
-	@echo Verifying Huffman compression/decompression...
-	@fc test\compress_test.txt build\decompressed_haff.txt && echo  HUFFMAN COMPRESS/DECOMPRESS: FILE MATCH || echo  HUFFMAN COMPRESS/DECOMPRESS: FILE DIFFER
+# 测试基础功能
+test-basic:
+	@echo === ²âÊÔ»ù´¡±¸·Ý¹¦ÄÜ ===
+	@mkdir test_source 2>nul || echo test_source directory exists
+	@echo test data for basic backup > test_source\test_basic.txt
+	-./$(TARGET).exe backup -s test_source -t test_backup_basic
 
-# 加密功能测试
-encrypt-test: $(TARGET)
-	@echo Creating test directory...
-	@mkdir test 2>nul || echo test directory exists
-	@mkdir build 2>nul || echo build directory exists
-	@echo "This is a test file for encryption. It contains some content to test the encryption algorithm." > test\encrypt_test.txt
-	@echo Running AES encryption test...
-	@$(TARGET) encrypt -i test\encrypt_test.txt -o build\encrypted_aes.enc -a aes -k 123456
-	@echo Running AES decryption test...
-	@$(TARGET) decrypt -i build\encrypted_aes.enc -o build\decrypted_aes.txt -a aes -k 123456
-	@echo Verifying AES encryption/decryption...
-	@fc test\encrypt_test.txt build\decrypted_aes.txt && echo  AES ENCRYPT/DECRYPT: FILE MATCH || echo  AES ENCRYPT/DECRYPT: FILE DIFFER
-	@echo Running DES encryption test...
-	@$(TARGET) encrypt -i test\encrypt_test.txt -o build\encrypted_des.enc -a des -k 123456
-	@echo Running DES decryption test...
-	@$(TARGET) decrypt -i build\encrypted_des.enc -o build\decrypted_des.txt -a des -k 123456
-	@echo Verifying DES encryption/decryption...
-	@fc test\encrypt_test.txt build\decrypted_des.txt && echo  DES ENCRYPT/DECRYPT: FILE MATCH || echo  DES ENCRYPT/DECRYPT: FILE DIFFER
+# 测试数据清理功能 - 创建多个备份文件
+test-cleanup:
+	@echo === ²âÊÔÊý¾ÝÇåÀí¹¦ÄÜ ===
+	@mkdir test_cleanup_dir 2>nul || echo test_cleanup_dir directory exists
+	@echo test data for cleanup 1 > test_cleanup_dir\cleanup_test1.txt
+	@echo test data for cleanup 2 > test_cleanup_dir\cleanup_test2.txt
+	@echo "³õÊ¼±¸·Ý"
+	-./$(TARGET).exe backup -s test_cleanup_dir -t test_backup_cleanup_1
+	@echo "±¸·Ý2"
+	-./$(TARGET).exe backup -s test_cleanup_dir -t test_backup_cleanup_2
+	@echo "±¸·Ý3"
+	-./$(TARGET).exe backup -s test_cleanup_dir -t test_backup_cleanup_3
+	@echo "±¸·Ý4"
+	-./$(TARGET).exe backup -s test_cleanup_dir -t test_backup_cleanup_4
+	@echo "±¸·Ý5"
+	-./$(TARGET).exe backup -s test_cleanup_dir -t test_backup_cleanup_5
+	@echo "²âÊÔÊý¾ÝÇåÀí£¬±£Áô×îÐÂ3¸ö±¸·Ý"
+	@echo "½«Îå¸ö±¸·ÝÖØÃüÃûµ½Ò»¸öÄ¿Â¼²¢²âÊÔÇåÀí"
+	@mkdir test_cleanup_multi 2>nul || echo test_cleanup_multi directory exists
+	copy test_backup_cleanup_1\backup.dat test_cleanup_multi\backup_1.dat 2>nul || echo backup_1.dat created
+	copy test_backup_cleanup_2\backup.dat test_cleanup_multi\backup_2.dat 2>nul || echo backup_2.dat created
+	copy test_backup_cleanup_3\backup.dat test_cleanup_multi\backup_3.dat 2>nul || echo backup_3.dat created
+	copy test_backup_cleanup_4\backup.dat test_cleanup_multi\backup_4.dat 2>nul || echo backup_4.dat created
+	copy test_backup_cleanup_5\backup.dat test_cleanup_multi\backup_5.dat 2>nul || echo backup_5.dat created
+	-./$(TARGET).exe cleanup -d test_cleanup_multi --keep-days 1 --max-count 3
 
-# 打包功能测试
-pack-test: $(TARGET)
-	@echo Creating test directory...
-	@mkdir test 2>nul || echo test directory exists
-	@mkdir build 2>nul || echo build directory exists
-	@echo "Test file 1 content" > test\file1.txt
-	@echo "Test file 2 content" > test\file2.txt
-	@mkdir test\subdir 2>nul || echo subdir exists
-	@echo "File in subdirectory" > test\subdir\subfile.txt
-	@echo Running tar pack test...
-	@$(TARGET) backup -s test -t build\tar_backup -a tar
-	@echo Running tar unpack test...
-	@$(TARGET) restore -f build\tar_backup\backup.dat -t build\tar_restore
-	@echo Verifying tar pack/unpack...
-	@fc test\file1.txt build\tar_restore\file1.txt && echo  TAR PACK/UNPACK: FILE1 MATCH || echo  TAR PACK/UNPACK: FILE1 DIFFER
-	@fc test\file2.txt build\tar_restore\file2.txt && echo  TAR PACK/UNPACK: FILE2 MATCH || echo  TAR PACK/UNPACK: FILE2 DIFFER
-	@fc test\subdir\subfile.txt build\tar_restore\subdir\subfile.txt && echo  TAR PACK/UNPACK: SUBDIR FILE MATCH || echo  TAR PACK/UNPACK: SUBDIR FILE DIFFER
+# 测试定时备份功能（短时间间隔）
+test-schedule:
+	@echo === ²âÊÔ¶¨Ê±±¸·Ý¹¦ÄÜ ===
+	@mkdir test_schedule_dir 2>nul || echo test_schedule_dir directory exists
+	@echo test data for schedule 1 > test_schedule_dir\schedule_test1.txt
+	@echo test data for schedule 2 > test_schedule_dir\schedule_test2.txt
+	@echo test data for schedule 3 > test_schedule_dir\schedule_test3.txt
+	@echo ×¢Òâ£º¶¨Ê±±¸·Ý²âÊÔ»áÔËÐÐÒ»¶ÎÊ±¼ä£¬Ã¿1·ÖÖÓÖ´ÐÐÒ»´Î±¸·Ý£¬×Ü¹²Ö´ÐÐ3´Î
+	@echo °´ Ctrl+C ¿ÉÒÔÖÐ¶Ï²âÊÔ
+	-./$(TARGET).exe schedule -s test_schedule_dir -t test_backup_schedule -i 1 --keep-days 1 --max-count 3
 
-# 详细压缩测试
-detailed-compress-test: $(TARGET)
-	@echo Creating test directory...
-	@mkdir test 2>nul || echo test directory exists
-	@mkdir build 2>nul || echo build directory exists
-	@echo "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA......" > test\repetitive.txt
-	@echo Testing LZ77 compression on repetitive data...
-	@$(TARGET) compress -i test\repetitive.txt -o build\repetitive_lz77.cmp -a lz77
-	@$(TARGET) decompress -i build\repetitive_lz77.cmp -o build\repetitive_lz77_decomp.txt
-	@echo Verifying LZ77 on repetitive data...
-	@fc test\repetitive.txt build\repetitive_lz77_decomp.txt && echo  LZ77 REPETITIVE DATA: FILE MATCH || echo  LZ77 REPETITIVE DATA: FILE DIFFER
-	@echo Testing Huffman compression on repetitive data...
-	@$(TARGET) compress -i test\repetitive.txt -o build\repetitive_haff.cmp -a haff
-	@$(TARGET) decompress -i build\repetitive_haff.cmp -o build\repetitive_haff_decomp.txt
-	@echo Verifying Huffman on repetitive data...
-	@fc test\repetitive.txt build\repetitive_haff_decomp.txt && echo  HUFFMAN REPETITIVE DATA: FILE MATCH || echo  HUFFMAN REPETITIVE DATA: FILE DIFFER
+# 测试所有功能
+test-all: test-help test-basic test-cleanup
+	@echo === ËùÓÐ²âÊÔÍê³É ===
 
-# 详细打包测试
-detailed-pack-test: $(TARGET)
-	@echo Creating test directory...
-	@mkdir test 2>nul || echo test directory exists
-	@mkdir build 2>nul || echo build directory exists
-	@echo "File A content" > test\fileA.txt
-	@echo "File B content" > test\fileB.txt
-	@echo "File C content" > test\fileC.txt
-	@mkdir test\dir1 2>nul || echo dir1 exists
-	@mkdir test\dir2 2>nul || echo dir2 exists
-	@echo "Nested file 1" > test\dir1\nested1.txt
-	@echo "Nested file 2" > test\dir1\nested2.txt
-	@echo "Another nested file" > test\dir2\nested3.txt
-	@echo Testing tar pack with nested directories...
-	@$(TARGET) backup -s test -t build\nested_backup -a tar
-	@echo Testing tar unpack with nested directories...
-	@$(TARGET) restore -f build\nested_backup\backup.dat -t build\nested_restore
-	@echo Verifying nested directory pack/unpack...
-	@fc test\fileA.txt build\nested_restore\fileA.txt && echo  NESTED TAR: FILEA MATCH || echo  NESTED TAR: FILEA DIFFER
-	@fc test\dir1\nested1.txt build\nested_restore\dir1\nested1.txt && echo  NESTED TAR: NESTED1 MATCH || echo  NESTED TAR: NESTED1 DIFFER
-	@fc test\dir2\nested3.txt build\nested_restore\dir2\nested3.txt && echo  NESTED TAR: NESTED3 MATCH || echo  NESTED TAR: NESTED3 DIFFER
+# 运行综合测试
+full-test: all
+	@echo === ¿ªÊ¼×ÛºÏ²âÊÔ ===
+	@echo 1. ²âÊÔ°ïÖúÐÅÏ¢
+	-./$(TARGET).exe
+	@echo 2. ²âÊÔ±¸·Ý¹¦ÄÜ
+	@mkdir test_data 2>nul || echo test_data directory exists
+	@echo test content > test_data\test.txt
+	-./$(TARGET).exe backup -s test_data -t test_output
+	@echo 3. ²âÊÔ»¹Ô­¹¦ÄÜ
+	@mkdir test_restore 2>nul || echo test_restore directory exists
+	@echo ±¸·Ý»¹Ô­²âÊÔ´ýÊµÏÖ...
+	@echo 4. ²âÊÔÑ¹Ëõ¹¦ÄÜ
+	@echo compress test data > test_compress_input.txt
+	-./$(TARGET).exe compress -i test_compress_input.txt -o test_compress_output.cmp -a haff
+	@echo 5. ²âÊÔ½âÑ¹¹¦ÄÜ
+	-./$(TARGET).exe decompress -i test_compress_output.cmp -o test_decompress_output.txt
+	@echo 6. ²âÊÔÊý¾ÝÇåÀí
+	-./$(TARGET).exe cleanup -d test_output --keep-days 1 --max-count 5
+	@echo === ×ÛºÏ²âÊÔÍê³É ===
 
-# 综合测试（压缩+打包）
-combo-test: $(TARGET)
-	@echo Creating test directory...
-	@mkdir test 2>nul || echo test directory exists
-	@mkdir build 2>nul || echo build directory exists
-	@echo "Test file for combined compression and packing" > test\combo_test.txt
-	@echo "Another test file" > test\combo_test2.txt
-	@mkdir test\subfolder 2>nul || echo subfolder exists
-	@echo "File in subfolder" > test\subfolder\sub.txt
-	@echo Testing backup with tar packing and lz77 compression...
-	@$(TARGET) backup -s test -t build\combo_backup -a tar -c lz77
-	@echo Testing restore with decompression and unpacking...
-	@$(TARGET) restore -f build\combo_backup\backup.dat -t build\combo_restore
-	@echo Verifying combined backup/restore...
-	@fc test\combo_test.txt build\combo_restore\combo_test.txt && echo  COMBO BACKUP/RESTORE: FILE1 MATCH || echo  COMBO BACKUP/RESTORE: FILE1 DIFFER
-	@fc test\subfolder\sub.txt build\combo_restore\subfolder\sub.txt && echo  COMBO BACKUP/RESTORE: SUBFOLDER FILE MATCH || echo  COMBO BACKUP/RESTORE: SUBFOLDER FILE DIFFER
 
-# 加密备份测试
-encrypt-backup-test: $(TARGET)
-	@echo Creating test directory for encryption backup...
-	@mkdir test 2>nul || echo test directory exists
-	@mkdir build 2>nul || echo build directory exists
-	@echo "Test file for encrypted backup" > test\encrypt_backup_test.txt
-	@echo "Testing backup with tar packing, lz77 compression, and AES encryption..."
-	@$(TARGET) backup -s test -t build\encrypt_backup -a tar -c lz77 -e aes 123456
-	@echo "Testing restore with decryption, decompression, and unpacking..."
-	@$(TARGET) restore -f build\encrypt_backup\backup.dat -t build\encrypt_restore -e aes 123456
-	@echo "Verifying encrypted backup/restore..."
-	@fc test\encrypt_backup_test.txt build\encrypt_restore\encrypt_backup_test.txt && echo  ENCRYPTED BACKUP/RESTORE: FILE MATCH || echo  ENCRYPTED BACKUP/RESTORE: FILE DIFFER
-
-# 完整测试
-full-test: test-basic compress-test encrypt-test pack-test detailed-compress-test detailed-pack-test combo-test encrypt-backup-test
-
-combo-params-test: $(TARGET)
-	@echo Creating test for parameter passing in combo operation...
-	@mkdir test 2>nul || echo test directory exists
-	@mkdir build 2>nul || echo build directory exists
-	@echo "Test file for parameter test" > test\param_test.txt
-	@mkdir test\param_sub 2>nul || echo param_sub directory exists
-	@echo "Sub file for parameter test" > test\param_sub\sub.txt
-	@echo "Testing backup with tar packing and lz77 compression (with debug)..."
-	@$(TARGET) backup -s test -t build\param_backup -a tar -c lz77
-	@echo "Backup completed. Checking backup file size:"
-	@dir build\param_backup\backup.dat
-	@echo "Testing restore..."
-	@$(TARGET) restore -f build\param_backup\backup.dat -t build\param_restore
-	@echo "Restore completed. Checking results:"
-	@dir build\param_restore /s
-	@echo "Verifying files:"
-	@fc test\param_test.txt build\param_restore\param_test.txt && echo  PARAM TEST: ROOT FILE MATCH || echo  PARAM TEST: ROOT FILE DIFFER
-	@if exist build\param_restore\param_sub (
-		@if exist build\param_restore\param_sub\sub.txt (
-			fc test\param_sub\sub.txt build\param_restore\param_sub\sub.txt && echo  PARAM TEST: SUB FILE MATCH || echo  PARAM TEST: SUB FILE DIFFER
-		) else (
-			echo  PARAM TEST: SUBFOLDER EXISTS BUT SUB.TXT MISSING
-		)
-	) else (
-		echo  PARAM TEST: SUBFOLDER MISSING ENTIRELY
-	)
-.PHONY: all clean test-basic compress-test encrypt-test pack-test detailed-compress-test detailed-pack-test combo-test encrypt-backup-test full-test
+.PHONY: all clean test-help test-basic test-cleanup test-schedule test-all full-test test-schedule-background
